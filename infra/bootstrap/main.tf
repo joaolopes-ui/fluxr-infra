@@ -92,8 +92,13 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
 # ─────────────────────────────────────────────────────────────────────────
 data "aws_iam_policy_document" "github_actions_trust" {
   statement {
-    effect  = "Allow"
-    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect = "Allow"
+    # sts:TagSession é obrigatório aqui porque o aws-actions/configure-aws-credentials
+    # v4 marca a sessão assumida com tags automáticas (repo, actor, ref, sha, ...) —
+    # sem essa permissão a AWS rejeita a chamada inteira com "Not authorized to
+    # perform sts:AssumeRoleWithWebIdentity" (mensagem enganosa: o que falta é
+    # TagSession, não AssumeRoleWithWebIdentity em si).
+    actions = ["sts:AssumeRoleWithWebIdentity", "sts:TagSession"]
 
     principals {
       type        = "Federated"
