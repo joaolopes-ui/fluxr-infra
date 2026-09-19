@@ -47,6 +47,12 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+        env:
+          # Endpoint global do STS em vez do regional (sa-east-1) — contas AWS
+          # novas às vezes têm mais lag de propagação de IAM/OIDC nos
+          # endpoints regionais do que no global. Se resolver, dá pra tentar
+          # remover depois; se não resolver, não é isso.
+          AWS_STS_REGIONAL_ENDPOINTS: legacy
 
       - uses: hashicorp/setup-terraform@v3
         with:
