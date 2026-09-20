@@ -111,10 +111,18 @@ data "aws_iam_policy_document" "github_actions_trust" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # Duas formas porque o GitHub pode emitir o claim "sub" com ou sem os IDs
+    # numéricos imutáveis (ex.: "repo:org@123/repo@456:ref:..." em vez do
+    # clássico "repo:org/repo:ref:..."), dependendo da configuração da conta
+    # — confirmado via CloudTrail (campo Username do evento
+    # AssumeRoleWithWebIdentity negado) que esta conta usa o formato com ID.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_org}/${var.github_repo}:*"]
+      values = [
+        "repo:${var.github_org}/${var.github_repo}:*",
+        "repo:${var.github_org}@*/${var.github_repo}@*:*",
+      ]
     }
   }
 }
