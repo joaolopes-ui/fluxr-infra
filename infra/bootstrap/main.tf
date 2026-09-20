@@ -157,7 +157,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     actions = [
       "ec2:*", "rds:*", "ecs:*", "ecr:*", "elasticloadbalancing:*",
       "s3:*", "secretsmanager:*", "logs:*", "application-autoscaling:*",
-      "servicediscovery:*",
+      "servicediscovery:*", "kms:*",
     ]
     resources = ["*"]
   }
