@@ -40,3 +40,9 @@ variable "master_username" {
   type    = string
   default = "fluxr_admin"
 }
+
+variable "backup_retention_days" {
+  description = "Contas AWS no Free Tier têm um teto baixo aqui (confirmado via erro real: FreeTierRestrictionError pedindo 7 dias) — aumentar quando a conta sair do Free Tier."
+  type        = number
+  default     = 1
+}
