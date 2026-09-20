@@ -56,24 +56,15 @@ resource "aws_security_group" "db" {
   tags = { Name = "${var.project}-db-sg" }
 }
 
-# Chave própria em vez da default gerenciada pela AWS (alias/aws/rds) —
-# essa alias só é criada automaticamente na primeira vez que é usada pelo
-# CONSOLE da AWS, não via API/Terraform. Confirmado via erro real:
-# KMSKeyNotAccessibleFault "[null]" ao tentar criar o RDS numa conta nova
-# sem nenhuma chave default ainda provisionada.
-resource "aws_kms_key" "rds" {
-  description             = "Criptografia do RDS Postgres do Fluxr"
-  deletion_window_in_days = 7
-  tags                    = { Name = "${var.project}-rds-kms" }
-}
-
-resource "aws_kms_alias" "rds" {
-  name          = "alias/${var.project}-rds"
-  target_key_id = aws_kms_key.rds.key_id
-}
-
 # Senha do master gerenciada pela própria AWS (Secrets Manager) — nunca
 # aparece em texto puro no código, no state ou nos logs do Terraform.
+#
+# storage_encrypted usa a chave default da AWS (alias/aws/rds) — o erro
+# original (KMSKeyNotAccessibleFault) era só falta da permissão kms:* na
+# policy do GitHub Actions (já corrigido no bootstrap), não ausência de
+# chave. Uma chave KMS própria chegou a entrar aqui e foi revertida: o
+# banco já foi criado com a chave default, e trocar a chave de um RDS
+# existente exige destruir e recriar a instância — sem necessidade real.
 resource "aws_db_instance" "main" {
   identifier     = "${var.project}-db"
   engine         = "postgres"
@@ -84,7 +75,6 @@ resource "aws_db_instance" "main" {
   max_allocated_storage = 100
   storage_type          = "gp3"
   storage_encrypted     = true
-  kms_key_id            = aws_kms_key.rds.arn
 
   db_name                     = var.db_name
   username                    = var.master_username
