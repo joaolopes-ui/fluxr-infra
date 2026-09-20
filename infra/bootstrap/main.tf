@@ -174,6 +174,28 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     ]
     resources = ["arn:aws:iam::*:role/${var.project}-*"]
   }
+
+  # Service-linked roles são gerenciadas pela própria AWS (fora do prefixo
+  # "${var.project}-"), e cada serviço usado pela primeira vez numa conta
+  # (RDS, ECS, ...) precisa criar a sua antes de funcionar — confirmado via
+  # erro real: "Unable to create the resource. Verify that you have
+  # permission to create service linked role" ao criar o primeiro RDS desta
+  # conta. Uma entrada por serviço, restrita ao respectivo AWSServiceName.
+  statement {
+    sid       = "ServiceLinkedRoles"
+    effect    = "Allow"
+    actions   = ["iam:CreateServiceLinkedRole"]
+    resources = ["arn:aws:iam::*:role/aws-service-role/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:AWSServiceName"
+      values = [
+        "rds.amazonaws.com",
+        "ecs.amazonaws.com",
+        "elasticloadbalancing.amazonaws.com",
+      ]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "github_actions_permissions" {
