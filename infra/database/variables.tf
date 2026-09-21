@@ -14,12 +14,6 @@ variable "tf_state_bucket" {
   default     = "fluxr-terraform-state"
 }
 
-variable "vpc_cidr" {
-  description = "Precisa bater com o CIDR usado no módulo network"
-  type        = string
-  default     = "10.20.0.0/16"
-}
-
 variable "postgres_version" {
   description = "Versão major do Postgres — a AWS escolhe a minor mais recente disponível"
   type        = string

@@ -29,22 +29,15 @@ resource "aws_db_subnet_group" "main" {
   tags       = { Name = "${var.project}-db-subnet-group" }
 }
 
-# Libera 5432 só de dentro da VPC por enquanto — quando o módulo containers
-# existir (ECS rodando PostgREST/GoTrue), trocar essa regra por uma
-# apontando só pro security group das tasks do ECS, mais restrita que a
-# VPC inteira.
+# Sem ingress inline aqui de propósito — o módulo containers adiciona a
+# regra de entrada (só das tasks do ECS, via aws_security_group_rule
+# separado) depois que esse security group existe. Antes disso havia uma
+# regra provisória liberando a VPC inteira; removida agora que o acesso
+# real (ECS) já está definido.
 resource "aws_security_group" "db" {
   name        = "${var.project}-db"
   description = "Acesso ao Postgres do Fluxr"
   vpc_id      = data.terraform_remote_state.network.outputs.vpc_id
-
-  ingress {
-    description = "Postgres de dentro da VPC"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-  }
 
   egress {
     from_port   = 0
