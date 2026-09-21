@@ -35,7 +35,7 @@ jobs:
       matrix:
         # Cada módulo novo (database, containers, ...) entra aqui quando
         # estiver pronto pra ser aplicado automaticamente.
-        module: [network, database]
+        module: [network, database, containers]
     defaults:
       run:
         working-directory: infra/${{ matrix.module }}
