@@ -1,0 +1,142 @@
+name: Destruir infraestrutura AWS
+
+# Desmonta tudo o que o Terraform criou pelos módulos containers, database e
+# network (ECS, RDS fluxr-db, VPC/NAT). O Fluxr ficou no Supabase + Vercel e
+# esta infraestrutura não vai ser usada. O RDS é apagado SEM snapshot final
+# (skip_final_snapshot = true): ele nunca recebeu dados do Fluxr.
+#
+# Só roda manualmente (Actions → "Destruir infraestrutura AWS" → Run workflow),
+# digitando DESTRUIR no campo de confirmação. A ordem é a inversa da criação:
+# containers → database → network.
+#
+# O bootstrap (bucket de state, tabela de lock, provedor OIDC e a role deste
+# workflow) fica de fora de propósito: este workflow depende deles. Ele sai à
+# parte, pelo CloudShell, depois que este terminar (ver README).
+on:
+  workflow_dispatch:
+    inputs:
+      confirmacao:
+        description: "Digite DESTRUIR para apagar ECS, RDS e VPC"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: sa-east-1
+  TF_STATE_BUCKET: fluxr-terraform-state
+  TF_LOCK_TABLE: fluxr-terraform-lock
+
+concurrency:
+  group: destruir-infra
+  cancel-in-progress: false
+
+jobs:
+  confirmar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confere a confirmação
+        if: inputs.confirmacao != 'DESTRUIR'
+        run: |
+          echo "Confirmação diferente de DESTRUIR — nada foi apagado."
+          exit 1
+      - run: echo "Confirmado."
+
+  containers:
+    needs: confirmar
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/containers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+        env:
+          AWS_STS_REGIONAL_ENDPOINTS: legacy
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Terraform Init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=containers/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
+      # O Terraform chama iam:ListInstanceProfilesForRole ao apagar uma role, e a
+      # role do CI não tem essa permissão. A execution role do ECS sai pelo CLI
+      # (só precisa de DetachRolePolicy + DeleteRole, que a role do CI tem) e
+      # deixa o state antes do destroy.
+      - name: Apaga a execution role do ECS
+        run: |
+          ROLE=fluxr-ecs-execution
+          if aws iam get-role --role-name "$ROLE" >/dev/null 2>&1; then
+            aws iam detach-role-policy --role-name "$ROLE" \
+              --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy || true
+            aws iam delete-role --role-name "$ROLE"
+            echo "Role $ROLE apagada."
+          else
+            echo "Role $ROLE já não existe."
+          fi
+          terraform state rm aws_iam_role_policy_attachment.ecs_execution aws_iam_role.ecs_execution || true
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve -input=false -no-color
+
+  database:
+    needs: containers
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/database
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+        env:
+          AWS_STS_REGIONAL_ENDPOINTS: legacy
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Terraform Init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=database/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve -input=false -no-color
+
+  network:
+    needs: database
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/network
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+        env:
+          AWS_STS_REGIONAL_ENDPOINTS: legacy
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Terraform Init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=network/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve -input=false -no-color
